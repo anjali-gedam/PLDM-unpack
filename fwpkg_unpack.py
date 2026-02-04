@@ -263,6 +263,7 @@ class PLDMUnpack:
         Returns :
             True if parsing successful
         """
+        print("DEBUG123 parse_header")
         # check if UUID is valid
         pldm_fw_header_id_v1_0 = b'\xf0\x18\x87\x8c\xcb\x7d\x49\x43\x98\x00\xa0\x2f\x05\x9a\xca\x02'
         pldm_fw_header_id_v1_1 = b'\x12\x44\xd2\x64\x8d\x7d\x47\x18\xa0\x30\xfc\x8a\x56\x58\x7d\x5a'
@@ -283,16 +284,21 @@ class PLDMUnpack:
             log_msg = "Error: incorrect package format."
             Util.cli_log(log_msg, False)
             return False
+        
+        print("UUID = ", self.header_map["PackageHeaderIdentifier"])
+        
         if self.header_map["PackageHeaderIdentifier"] not in valid_uuids:
             log_msg = "Expected PLDM v1.0 or v1.1 or v1.2 or v1.3, "\
                   + "but PackageHeaderIdentifier is " \
                   + self.header_map["PackageHeaderIdentifier"]
             Util.cli_log(log_msg, False)
             return False
+            
         self.header_map["PackageHeaderFormatRevision"] = str(
             int.from_bytes(self.fwpkg_fd.read(1),
                            byteorder='little',
                            signed=False))
+                           
         self.header_map["PackageHeaderSize"] = int.from_bytes(
             self.fwpkg_fd.read(2), byteorder='little', signed=False)
         timestamp = self.fwpkg_fd.read(13)
@@ -309,9 +315,12 @@ class PLDMUnpack:
         self.header_map["PackageVersionString"] = self.fwpkg_fd.read(
             version_str_len).split(b'\x00')[0].decode('utf-8')
         self.full_header["PackageHeaderInformation"] = self.header_map
+        print(json.dumps(self.header_map, indent=4))
+        
         return True
 
     def parse_device_id_records(self):
+        print("DEBUG123 parse_device_id_records")
         """
         Parse PLDM FirmwareDeviceIDRecords data into self.fd_id_record_list
         Returns:
@@ -337,10 +346,12 @@ class PLDMUnpack:
                     self.fwpkg_fd.read(1), byteorder='little', signed=False)
             id_record_map["FirmwareDevicePackageDataLength"] = int.from_bytes(
                 self.fwpkg_fd.read(2), byteorder='little', signed=False)
+                
             # ReferenceManifestLength is only present in format revision 4+ (version 1.3+)
             if int(self.header_map["PackageHeaderFormatRevision"]) >= 4:
                 id_record_map["ReferenceManifestLength"] = int.from_bytes(
                     self.fwpkg_fd.read(4), byteorder='little', signed=False)
+                    
             applicable_component_size = math.ceil(
                 self.header_map["ComponentBitmapBitLength"] / 8)
             id_record_map["ApplicableComponents"] = int.from_bytes(
@@ -406,15 +417,29 @@ class PLDMUnpack:
                             "AdditionalDescriptorIdentifierData"] = self.fwpkg_fd.read(
                                 descriptor_map["AdditionalDescriptorLength"])
                 descriptors.append(descriptor_map)
+
+                
             id_record_map["RecordDescriptors"] = descriptors
+            
+            print(json.dumps(id_record_map, indent=4, default=str))
+            
             id_record_map["FirmwareDevicePackageData"] = self.fwpkg_fd.read(
                 id_record_map["FirmwareDevicePackageDataLength"]).decode(
                     'utf-8')
             self.fd_id_record_list.append(id_record_map)
+            
+            id_record_map["ReferenceManifestData"] = self.fwpkg_fd.read(
+                id_record_map["ReferenceManifestLength"]).decode(
+                    'utf-8')
+            self.fd_id_record_list.append(id_record_map)
+            
+            
+            
         self.full_header["FirmwareDeviceIdentificationArea"] = {
             "DeviceIDRecordCount": self.device_id_record_count,
             "FirmwareDeviceIDRecords": self.fd_id_record_list
         }
+        
         return True
 
     def parse_downstream_device_identification_area(self):
@@ -426,6 +451,8 @@ class PLDMUnpack:
         downstream_device_id_record_count = int.from_bytes(self.fwpkg_fd.read(1),
                                                            byteorder='little',
                                                            signed=False)
+        print("downstream_device_id_record_count = ", downstream_device_id_record_count)
+        print("\n")
         if self.verbose:
             Util.cli_log(
                 f"Downstream device ID record count: {downstream_device_id_record_count}", True)
@@ -453,10 +480,17 @@ class PLDMUnpack:
         component_image_count = int.from_bytes(self.fwpkg_fd.read(2),
                                                byteorder='little',
                                                signed=False)
+        print("DEBUG123 parse_component_img_info")
+        print("component_image_count=",component_image_count)
+        input()
+        
         if self.verbose:
             Util.cli_log(
                 f"Component image count: {component_image_count}", True)
         for _ in range(component_image_count):
+            
+            
+            
             comp_info = {}
             comp_info["ComponentClassification"] = int.from_bytes(
                 self.fwpkg_fd.read(2), byteorder='little', signed=False)
@@ -495,10 +529,12 @@ class PLDMUnpack:
                     comp_info["ComponentOpaqueData"] = self.fwpkg_fd.read(
                         comp_info["ComponentOpaqueDataLength"]).hex()
             self.component_img_info_list.append(comp_info)
+            print(json.dumps(self.component_img_info_list, indent=4, default=str))
         self.full_header["ComponentImageInformationArea"] = {
             "ComponentImageCount": component_image_count,
             "ComponentImageInformation": self.component_img_info_list
         }
+        
         return True
 
     def get_image_name_from_records(self, comp_info_index):
@@ -699,7 +735,10 @@ class PLDMUnpack:
                 Util.cli_log(log_msg, True)
             # Validate the payload checksum
             self.validate_pldm_payload_checksum()
+        input("\n\n\n\***********full data*************")
+        print(json.dumps(self.full_header, indent=4, default=str))
 
+    #main
     def unpack_pldm_package(self, package_name, output_dir):
         """
         Parse the PLDM package and get information about components included in the FW image.
@@ -722,15 +761,25 @@ class PLDMUnpack:
         self.package = package_name
         try:
             with open(self.package, "rb") as self.fwpkg_fd:
+                print("****TOP parse_header")
+                #===============
                 parsing_valid = self.parse_header()
+                #===============
+                
                 if parsing_valid:
+                    print("****TOP parse_device_id_records")
                     parsing_valid = self.parse_device_id_records()
                     if parsing_valid:
                         # Parse downstream device identification area for format revision > 1
                         if int(self.header_map["PackageHeaderFormatRevision"]) > 1:
+                            
+                            print("****TOP parse_downstream_device_identification_area")
                             parsing_valid = self.parse_downstream_device_identification_area()
+                            
                         if parsing_valid:
+                            print("****TOP parse_component_img_info")
                             parsing_valid = self.parse_component_img_info()
+                            
                             self.get_pldm_header_checksum()
                             self.get_pldm_payload_checksum()
                 if parsing_valid and self.unpack:
